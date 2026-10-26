@@ -1,0 +1,181 @@
+RAY POKERI (1990) - hardware notes
+==================================
+
+Worked out from the game ROM, the RAY service manuals (Huolto ja korjaus,
+Toimintaselostus) and testing in the emulator. Things marked "?" are
+guesses.
+
+
+Main board
+----------
+  CPU        Motorola 68000, 8 MHz
+  Video      Hitachi HD63484 ACRTC graphics processor, 4 bits per pixel,
+             608 x 292 visible, 16 fixed colours
+  I/O        3 x MC6821 PIA, MC6850 ACIAs (serial), MC68681 DUART (optional)
+  Sound      AY-3-8910 on the light/sound board, 1 MHz clock, driven
+             through PIA1
+  NVRAM      battery-backed RAM + MK48T02-style clock
+  Display    7-segment LED for service codes, on PIA3
+
+
+Memory map
+----------
+The board decodes only address lines A0-A19, so everything repeats every
+1 MB. (The ROM has a bug at 0xD05A that only works because of this mirroring.)
+
+  000000-03FFFF   program ROM, 256 KB (four 64 KB EPROMs, see below)
+  040000-04FFFF   RAM, 64 KB
+                    043800-043FFF battery backed
+                    043FF8-043FFF clock registers (MK48T02 layout)
+                    048B00 = value of A6 (global data base)
+  0C0000          MC68681 DUART (level 2 autovector) - not emulated
+  0F6000          HD63484 address register (write) / status (read)
+  0F6002          HD63484 data
+  0FB002/3        ACIA1 control/data: coin processor link
+  0FB006/7 ...    ACIA2-5 at FB000 + 4n + 2
+  0FB014-017      PIA1  light/sound board
+  0FB018-01B      PIA2  buttons, door, service switches
+  0FB01C-01F      PIA3  7-segment display, watchdog, misc inputs
+
+The HD63484 is on the upper byte lane. A byte access addresses one register
+byte: an even register address is the high byte, an odd one the low byte.
+With bit 7 of the address set, the address steps by one byte per access.
+The command FIFO (address 0) pairs two bytes into a word.
+
+
+Program ROM
+-----------
+The four EPROMs on the main board (PCB 5003), 64 KB each, one after the
+other. The bracketed number on a label is the 16-bit sum of the chip's bytes
+(--list-roms checks these). Each chip is one file in roms/:
+
+    address      chip  label             sum   contents
+    00000-0FFFF  IC30  6457-7.7 J        A8EF  system / library, reset vectors
+    10000-1FFFF  IC38  6458-7.7 J        14E2  system / library
+    20000-2FFFF  IC34  6458-7.7 J        01C5  system / library, linked 27.09.94
+    30000-3FFFF  IC43  8460-1.1 J1/100   -     the poker game, built 10.10.94
+
+So the game is one chip (IC43) on top of a common system (7.7). Other
+versions of the poker game, or other games on the same board such as
+Noppa, may only differ in IC43.
+
+
+Interrupts
+----------
+A priority encoder gives vectors 64-71 on level 4:
+  64  int0  HD63484 (command FIFO refill, game feeds the chip from a queue)
+  67  int3  100 Hz mains phase, via PIA1 CB2
+  69  int5  ?
+  70  int6  PIA1 CA1
+  71  int7  ACIA1, coin processor
+  level 2   MC68681 DUART (autovector)
+  level 7   NMI: PIA3 CB1 = power failing, PIA3 CB2 = watchdog warning
+
+The game runs its tasks in user mode; interrupts switch to the supervisor
+stack.
+
+
+Watchdog
+--------
+Kicked by a pulse on PIA3 PB7 or by the 68000 RESET instruction (which
+also resets the peripherals). After about 0.4 s without a kick it raises
+the warning NMI, and about 100 ms later it resets the CPU. The boot
+self-test deliberately stops kicking it and checks that the reset
+happens (more than 25 ms later), otherwise it shows fault 04. The
+software also stops kicking when a task runs for over 0.2 s.
+
+
+PIA1 - light/sound board
+------------------------
+  Port A          data bus D0-D7
+  PB0             /WRITE
+  PB1             MODE (also AY BC1)
+  PB2             STROBE
+  PB7             SSEL (AY BC2)
+Lamp data is latched on a rising MODE edge and moved into lamp latch
+(data & 7) on a falling STROBE edge. There are 3 latches = 24 lamps.
+Latch 2 bit 7 drives AY BDIR.
+  CA1             interrupt (vector 70)
+  CB2             100 Hz mains phase (vector 67)
+
+
+PIA2 - buttons and switches (all active low)
+--------------------------------------------
+  PA0  JAKO (deal)            PB0  VALITSE 3
+  PA1  VOITONMAKSU (collect)  PB1  VALITSE 2
+  PA2  PANOS (bet)            PB2  HUOLTO (service)
+  PA3  SUURI (big)            PB3  SRVC1
+  PA4  PIENI (small)          PB4  SRVC2
+  PA5  TUPLAUS (double)       PB5  VALITSE 1
+  PA6  VALITSE 5              PB6  door switch (0 = door open, "OVI AUKI")
+  PA7  VALITSE 4              PB7  +12 V guard (0 = power OK)
+
+
+PIA3 - misc
+-----------
+  PA0, PA1        cable sense? (held 0)
+  PA2-PA5         K13-K16 (K16 opens the test menu, TESTI 0-15)
+  PB0-PB6         7-segment display segments a-g
+  PB7             watchdog kick
+  CB1             power fail (NMI)
+  CB2             watchdog warning (NMI)
+
+
+Video (HD63484)
+---------------
+The screen is three stacked horizontal screens, all 152 words (608 pixels)
+wide in memory:
+  upper   40 lines   (R8C height, RC2 width, RC4/RC6 start address)
+  base   222 lines   (R8A, RCA, RCC/RCE)
+  lower   30 lines   (R8E, RD2, RD4/RD6)
+OMR = CD28: master, started, display priority, GAI = 4 words per display
+cycle, interleaved access (drawing shares memory cycles with the display).
+Command execution times are in the user's manual, p. 173. The game waits
+for the chip (FIFO ready / command end), so drawing speed affects how fast
+some animations run. Arc direction bit C=1 means clockwise, with Y up.
+
+Plus a window (R90-R96 position/size, RDA-RDE memory) used for the card
+sliding in while it's dealt.
+
+DCR (R06):
+  bits 15-8   screen enables (window = bits 9-8)
+  bits 5-0    colour attenuation outputs to the RGB DAC; the game clears
+              bit 2 to tint the screen yellow while idle
+At startup the game draws the card faces and symbols in off-screen memory
+and later block-copies them into place.
+
+
+Coin processor (PCB 5002) - serial link on ACIA1
+------------------------------------------------
+Source: Toimintaselostus, Rahakoneiston ohjain 5002, section 3.2.4.
+  Frame        1-3 data bytes (bit 7 clear) + check byte
+               check = (~sum(data)) | 0x80 (also marks end of frame)
+  Control      30 ENQ, 00/40 ACK (toggle 0/1), 28/68 NAK, 50 EOT
+  Toggle       bit 6 of the first byte alternates between messages;
+               the first message of each session has toggle 0
+  Session      opener sends ENQ, other side answers ACK, opener sends
+               data frames (each ACKed), then EOT
+Some messages:
+  01 07 00     coin unit cold start          01 79 00  self tests OK
+  01 44 00     hopper empty                  09 n      test request
+  31           parameter request/answer      03        coin in (channel 1)
+  24 n         pay n coins (hopper 1)        05        one coin paid
+
+
+Bookkeeping RAM ("kassamuisti")
+-------------------------------
+Three copies (pointers at A6-31532, -31528, -31524) of 18-byte records
+(16 data bytes + CRC-16). ROM routine 0xDC70 recomputes a record's CRC
+and copies it to the other two copies.
+  [0]     money held = [12] + [18] + [22]
+  [4]     money in
+  [12]    payout reserve (must cover the biggest win, otherwise
+          "P3 89 voitonmaksureservi riittämätön")
+  116     PELIT (credits)
+  120     VOITOT (wins)
+  126     word: closure code, low byte FF = machine open
+          e.g. 0x1384 = "P3 84 voitonmaksukoneet tyhjiä" (hoppers empty)
+Boot check (ROM 0xB27C): if the sums don't match, "P3 00 kassavika".
+
+Fault codes are kept in 10 slots at A6-30831 and shown on the 7-segment
+display; the code list is in Huolto ja korjaus, page 15.

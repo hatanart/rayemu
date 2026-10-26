@@ -1,0 +1,3 @@
+machine68k==0.4.1
+pygame>=2.5
+numpy>=1.24

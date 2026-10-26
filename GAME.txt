@@ -1,0 +1,221 @@
+RAY POKERI - the game and how it decides
+========================================
+
+What we have found out about the game program (8460-1.1, 10.10.1994) by
+reading the ROM and by watching it run in the emulator. ROM addresses are
+in hex; "A6-31152" means a variable at 0x48B00 - 31152 in RAM (the game
+keeps its variables relative to register A6 = 0x48B00). "?" marks guesses.
+
+
+1. Playing
+----------
+  PANOS (B)           bet 1-5 credits (PELIT). From bet 3 a joker is added
+                      to the deck.
+  JAKO (Enter)        deal five cards.
+  VALITSE 1-5 (1-5)   select the cards to keep ("VALITTU" appears under
+                      them). At least one card must be selected: with no
+                      selection JAKO does nothing.
+  JAKO                draw new cards for the others.
+
+  After a win the bottom bar shows "VOITIT n  TUPLAATKO" (you won n, double?).
+  TUPLAUS (D) starts the double-up game with PIENI / SUURI (small / big);
+  that part has not been analysed. VOITONMAKSU (P) takes the win: the
+  first press after a win is ignored, the second moves it onto the VOITOT
+  counter. VOITONMAKSU then pays VOITOT out as coins from the hopper.
+
+  Pay table, bet 1 (higher bets multiply it):
+    VIITOSET      five of a kind (only with the joker)    -
+    VARISUORA     straight flush                          20
+    NELOSET       four of a kind                          15
+    TAYSKASI      full house                              10
+    VARI          flush                                    5
+    SUORA         straight                                 4
+    KOLMOSET      three of a kind                          3
+    KAKSI PARIA   two pairs                                3
+  One pair does not win.
+
+  With no credits and nobody playing, the attract mode starts after about
+  80 seconds: "POKERI (c) RAY 1990" with bouncing cards, the pay table and
+  "PUDOTA RAHA" (insert coin).
+
+
+2. Machine information (service test TESTI 2)
+---------------------------------------------
+Door open (F10), K16 (F6), then VOITONMAKSU twice:
+
+    8460-1.1      the game, built MON OCT 10 16:10:03 EET 1994
+    6458-7.7      the system part, linked TUE SEP 27 10:49:39 EET 1994,
+                  by "KJL" on "SUNRAY9", in /USR2/LINK/J1
+    42463242      checksum?
+
+The game is the EPROM in IC43; the system part is IC30, IC38 and IC34
+(see HARDWARE.txt). The system part also contains a network protocol for
+a central computer ("vltCommProtocol", VLT = video lottery terminal, with
+Motorola/Intel byte order conversion). The emulator doesn't connect it;
+the game runs stand-alone.
+
+
+3. Random numbers
+-----------------
+One 32-bit number, kept in the battery-backed bookkeeping area (record
+offset 252), is stepped 100 times a second (ROM 0x1A9D8):
+
+    x = x * 65537 + K           (K = A6-28548)
+
+65537 is a weak multiplier: the low 16 bits just count up by K. Because
+it runs continuously, the cards you get depend mostly on the exact moment
+you press JAKO.
+
+
+4. Dealing
+----------
+ROM 0x18F6C deals the free card positions. It turns one 32-bit random
+number into five cards: if the number is below the largest multiple of
+N^5 that fits in 32 bits (N = cards in the deck, the constants at 0x18F8E
+are 11*52^5, 10*53^5, 9*54^5, 8*55^5) it is read as five base-N digits,
+otherwise a new number is drawn (at most 10 tries). This "rejection
+sampling" makes every card equally likely: a careful design.
+
+If a card is already in use, the code tries three other values derived
+from the seed and then steps to the next free card. That last step makes
+a card that follows an already used card very slightly more likely; a
+small bias, nothing more.
+
+Every dealt card is marked with the current round number in a "used"
+table (A6-31060). The round number goes up at the end of each draw.
+
+The first deal is not interfered with.
+
+
+5. After the draw: taking wins back
+-----------------------------------
+This is the interesting part (ROM 0x1917A-0x194CE). After the draw the
+game rates the hand (ROM 0x17C84: 2 = two pairs, 3 = three of a kind,
+4 = straight, 6 = full house, others not checked). Then, for
+
+    two pairs, three of a kind, and a straight
+
+it takes one random byte d (0-255) and computes
+
+    threshold = table[bet][hand] + correction
+
+If the threshold is bigger than d, it throws away one of the cards that
+make the win and deals a new one, and repeats this until the hand no
+longer qualifies. The card thrown away is always one the player just drew,
+never a held card, and it all happens before the cards are shown. The
+player cannot see it: the card simply never appears, although it stays
+marked in the "used" table (that is how the emulator counts take-backs).
+
+The table (game parameters, ROM 0x30052 + 3246):
+
+    bet   two pairs   three of a kind   straight
+     1       28            29              0
+     2       17            16              0
+     3       73            73             73
+     4       60            60             60
+     5       46            46             46
+
+So at bet 1, with no correction, 28/256 = 11 % of two-pair draws are
+taken back; at bet 3 it is 73/256 = 28 %. Straights have 0 at bets 1-2,
+so there they are only taken back when the correction is positive. The high values from bet 3
+balance the joker, which makes wins much more frequent.
+
+The emulator's bottom panel shows the live values.
+
+
+6. The correction: a payout controller
+--------------------------------------
+The game computes its running payout percentage from the books
+(ROM 0xD63A):
+
+    won  = bets - money in + money out + credits + pending wins + [206]
+    pct  = won * 10000 / bets          (0 when nothing has been bet)
+
+and from it the correction (ROM 0x18E28, values from the parameters):
+
+    payout          correction
+    over 94 %          +13
+    93-94 %            +10
+    92-93 %             +8
+    91-92 %             +5
+    90-91 %             +3
+    80-90 %              0
+    79-80 %             -3
+    78-79 %             -5
+    77-78 %             -8
+    76-77 %            -10
+    under 76 %         -13
+
+Paying too much makes it take more wins back, paying too little makes it
+more generous. The machine steers itself to 80-90 %. A new machine (no
+bets yet) starts at the generous end, -13.
+
+
+7. Settings in the game's parameter block
+-----------------------------------------
+The block at ROM 0x30052 (pointer at A6-29534) holds the game's settings.
+What we know of it:
+
+    offset   value   meaning
+     856       1     joker in use
+    2360       0     other take-back mode: instead of the table, hands
+                     rated 8 or more (probably straight flush and five of
+                     a kind) are taken back with 50 % chance, if 3304 is
+                     non-zero. Off in this ROM.
+    3240       3     lowest bet level with the joker
+    3246..     table of section 5 (three words per bet level)
+    3276..   13 10 8 5 3        corrections above 90 % (section 6)
+    3286..   -13 -10 -8 -5 -3   corrections below 80 %
+    3304       0     see 2360
+
+Other versions of the game (other regions, the English one) probably
+differ in this block.
+
+
+8. Bookkeeping ("kassamuisti")
+------------------------------
+Kept three times in battery RAM (pointers at A6-31532/-31528/-31524),
+in 18-byte records (16 bytes + CRC-16); ROM 0xDC70 recomputes a record's
+CRC and copies it to the other copies. Known fields (byte offsets):
+
+      0   money held = [12] + [18] + [22]
+      4   money in (coins)
+      8   money out (paid)
+     12   payout float: coins in the hopper for paying out
+    108   total bets
+    116   PELIT (credits)
+    120   VOITOT (wins waiting to be paid)
+    126   closure code (word): low byte FF = open, e.g. 0x1384 = P3 84
+     26   coins moved from hopper 1 to the cash box
+    130   hopper fills (an attendant filling the hopper): a fill adds
+          to [12], [0] and [130] (ROM 0xB538)
+    162   hopper 1 level (word), set in TESTI 1 "HOPPERIN 1 RAJA". When
+          the float is more than 50 coins above it, the game moves the
+          excess to the cash box, up to 50 coins at a time (ROM 0xC3D4,
+          coin unit command 25 n). With level 0 it keeps unloading.
+    252   the random number of section 3
+
+At start the game checks (ROM 0xB27C)
+
+    [0] = [12] + [18] + [22]
+    [4] + [130] - [144] - [0] - [8] - [26] - ... - [102] = 0
+
+and closes with "P3 00 kassavika" if they don't hold. It also closes
+with "P3 84" (hoppers empty) and "P3 89" (payout reserve too small: the
+float must cover the biggest possible win). F9 in the emulator refills
+the float and clears these.
+
+The start-up self test also checksums the EPROMs: a modified ROM makes the
+machine close itself (closure code 0EE0).
+
+
+9. Not looked at yet
+--------------------
+- The double-up game (TUPLAUS, PIENI/SUURI): it may have its own logic.
+- The attract mode's demo hands: that code (ROM 0x1BEAE, case 3 at
+  0x1BF00) deals up to four times until it gets at least two pairs,
+  probably so that the demo shows a win. It is not used in real play.
+- Fields 18, 22, 144, 206 and most of the parameter block.
+
+The emulator sets the hopper 1 level to the fill amount (1000) when it
+fills the hopper, like an attendant would.

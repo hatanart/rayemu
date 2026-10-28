@@ -862,49 +862,112 @@ class HD63484:
                 y -= 1
         return pts
 
-    def bresenham_ellipse(self, cx, cy, a, b, opm, arc=None):
-        """Ellipse around (cx, cy). arc = (start dx, dy, end dx, dy, clockwise)
-        relative to the centre limits it to the arc from start to end.
-        Y grows upwards, so clockwise means decreasing angle."""
+    def bresenham_ellipse(self, cx, cy, a, b, opm):
+        """Full ellipse with radii a, b around (cx, cy)."""
         pts = self._ellipse_points(a, b)
-        if arc is not None:
-            # The start-end chord splits the ellipse into two arcs, one on
-            # each side. Keep the side the arc runs through (found from the
-            # direction and the angles), including points on the chord.
-            # Up to a half circle this is the classic chord test.
-            sdx, sdy, edx, edy, cw = arc
-            if (sdx, sdy) != (edx, edy):
-                ra, rb = max(a, 1), max(b, 1)
-                a0 = math.atan2(sdy / rb, sdx / ra)
-                a1 = math.atan2(edy / rb, edx / ra)
-                sweep = ((a0 - a1) if cw else (a1 - a0)) % (2 * math.pi)
-                am = a0 - sweep / 2 if cw else a0 + sweep / 2
-                mx, my = ra * math.cos(am), rb * math.sin(am)
-                cx_, cy_ = edx - sdx, edy - sdy
-
-                def side(x, y):
-                    return cx_ * (y - sdy) - cy_ * (x - sdx)
-                want = side(mx, my)
-                pts = {p for p in pts if side(*p) * want >= 0}
         dot, c = self.dot, self.cl0
         for x, y in pts:
             dot(cx + x, cy + y, opm, c)
 
     def rarc(self, cpx, cpy, dxc, dyc, dxe, dye, cw, opm):
         # current point is the start, (dxc, dyc) the centre, (dxe, dye) the end
-        r = int(math.sqrt(dxc * dxc + dyc * dyc) + 0.5)
-        self.bresenham_ellipse(cpx + dxc, cpy + dyc, r, r, opm,
-                               (-dxc, -dyc, dxe - dxc, dye - dyc, bool(cw)))
+        r = math.sqrt(dxc * dxc + dyc * dyc)
+        self._trace_arc(cpx + dxc, cpy + dyc, r, r,
+                        -dxc, -dyc, dxe - dxc, dye - dyc, bool(cw), opm)
 
     def rearc(self, cpx, cpy, a, b, dxc, dyc, dxe, dye, cw, opm):
         # ellipse x^2/a + y^2/b = R^2 through the start point
         if not a or not b:
             return
         R = math.sqrt(dxc * dxc / a + dyc * dyc / b)
-        rx = int(math.sqrt(abs(a)) * R + 0.89)
-        ry = int(math.sqrt(abs(b)) * R + 0.5)
-        self.bresenham_ellipse(cpx + dxc, cpy + dyc, rx, ry, opm,
-                               (-dxc, -dyc, dxe - dxc, dye - dyc, bool(cw)))
+        self._trace_arc(cpx + dxc, cpy + dyc, math.sqrt(abs(a)) * R, math.sqrt(abs(b)) * R,
+                        -dxc, -dyc, dxe - dxc, dye - dyc, bool(cw), opm)
+
+    def _trace_arc(self, cx, cy, rx, ry, sdx, sdy, edx, edy, cw, opm):
+        """Arc of the ellipse with semi-axes rx, ry (not rounded) around
+        (cx, cy), from the start point (sdx, sdy) to the end point (edx, edy),
+        both relative to the centre. Like the chip it walks the curve from
+        the start pixel, so the arc always joins the lines drawn before and
+        after it and a following PAINT stays inside the outline. The pixel
+        path is kept 8-connected and one pixel thin. Y grows upwards, so
+        clockwise means decreasing angle; end == start is a full ellipse."""
+        if rx <= 0 or ry <= 0:
+            self.dot(cx + sdx, cy + sdy, opm, self.cl0)
+            return
+        t0 = math.atan2(sdy / ry, sdx / rx)
+        full = (sdx, sdy) == (edx, edy)
+        if full:
+            sweep = 2 * math.pi
+        else:
+            t1 = math.atan2(edy / ry, edx / rx)
+            sweep = ((t0 - t1) if cw else (t1 - t0)) % (2 * math.pi)
+            # When the end point is off the curve, end at the curve point
+            # nearest to it (searched within 90 degrees of its direction).
+            # The card fonts are drawn that way: e.g. the 5's bowl ends at
+            # its bottom instead of curling up towards the end point.
+            sgn = -1 if cw else 1
+            best = None
+            for k in range(-90, 91):
+                s = sweep + math.radians(k)
+                if not 0 <= s <= 2 * math.pi:
+                    continue
+                t = t0 + sgn * s
+                d = (rx * math.cos(t) - edx) ** 2 + (ry * math.sin(t) - edy) ** 2
+                if best is None or d < best[0] - 1e-9:
+                    best = (d, s)
+            sweep = best[1]
+        # pixels nearest the true curve: one per column where the curve is
+        # flat, one per row where it is steep
+        floor, sqrt = math.floor, math.sqrt
+        ring = set()
+        d = sqrt(rx * rx + ry * ry)
+        xb, yb = rx * rx / d, ry * ry / d
+        for x in range(-floor(xb), floor(xb) + 1):
+            y = floor(ry * sqrt(max(0.0, 1 - x * x / (rx * rx))) + 0.5)
+            ring.update(((x, y), (x, -y)))
+        for y in range(-floor(yb), floor(yb) + 1):
+            x = floor(rx * sqrt(max(0.0, 1 - y * y / (ry * ry))) + 0.5)
+            ring.update(((x, y), (-x, y)))
+        # keep the ones from the start to the end, in drawing order
+        two_pi = 2 * math.pi
+        sel = []
+        for x, y in ring:
+            t = math.atan2(y / ry, x / rx)
+            off = ((t0 - t) if cw else (t - t0)) % two_pi
+            if full or off <= sweep + 1e-9:
+                sel.append((off, x, y))
+        sel.sort()
+        pts = [(sdx, sdy)]
+        for _, x, y in sel:
+            p = (x, y)
+            if p == pts[-1] or p in pts[-2:]:
+                continue
+            if abs(x - pts[-1][0]) > 1 or abs(y - pts[-1][1]) > 1:
+                # bridge a gap (only near the start point)
+                px, py = pts[-1]
+                while abs(x - px) > 1 or abs(y - py) > 1:
+                    px += (x > px) - (x < px)
+                    py += (y > py) - (y < py)
+                    pts.append((px, py))
+            pts.append(p)
+        if full and len(pts) > 1 and pts[-1] == pts[0]:
+            pts.pop()
+        # The arc ends at the end angle. The end point itself need not lie
+        # on the curve, and the chip does not draw out to it (manual, RARC:
+        # "a dot is not drawn at Pe"; only CP moves there).
+        # drop corner pixels: a pixel whose neighbours already touch
+        thin = [pts[0]]
+        for i in range(1, len(pts) - 1):
+            px, py = thin[-1]
+            nx, ny = pts[i + 1]
+            if abs(nx - px) <= 1 and abs(ny - py) <= 1:
+                continue
+            thin.append(pts[i])
+        if len(pts) > 1:
+            thin.append(pts[-1])
+        dot, c = self.dot, self.cl0
+        for x, y in thin:
+            dot(cx + x, cy + y, opm, c)
 
     def paint(self, sx, sy, col):
         """Flood fill bounded by the edge colour (iterative)."""

@@ -18,21 +18,30 @@ keeps its variables relative to register A6 = 0x48B00). "?" marks guesses.
   JAKO                draw new cards for the others.
 
   After a win the bottom bar shows "VOITIT n  TUPLAATKO" (you won n, double?).
-  TUPLAUS (D) starts the double-up game with PIENI / SUURI (small / big);
-  that part has not been analysed. VOITONMAKSU (P) takes the win: the
-  first press after a win is ignored, the second moves it onto the VOITOT
-  counter. VOITONMAKSU then pays VOITOT out as coins from the hopper.
+  TUPLAUS (D) starts the double-up game with PIENI / SUURI (small / big),
+  see section 6. VOITONMAKSU (P) takes the win: the first press after a
+  win is ignored, the second moves it onto the VOITOT counter. VOITONMAKSU
+  then pays VOITOT out as coins from the hopper.
 
-  Pay table, bet 1 (higher bets multiply it):
-    VIITOSET      five of a kind (only with the joker)    -
-    VARISUORA     straight flush                          20
-    NELOSET       four of a kind                          15
-    TAYSKASI      full house                              10
-    VARI          flush                                    5
-    SUORA         straight                                 4
-    KOLMOSET      three of a kind                          3
-    KAKSI PARIA   two pairs                                3
-  One pair does not win.
+  Pay table (credits won, parameter block offset 534, one row per bet).
+  It is not a plain multiple of bet 1:
+
+    bet  KAKSI   KOLMO-  SUORA  VARI   TAYS-  NELO-  VARI-  VIITO-
+         PARIA   SET                   KASI   SET    SUORA  SET
+     1     3       3       4      5     10     15     20      -
+     2     6       6       8     10     20     30     40      -
+     3     6       6      12     15     30     45     60     60
+     4     8       8      16     20     40     60     80     80
+     5    10      10      20     25     50     75    100    100
+
+    KAKSI PARIA two pairs, KOLMOSET three of a kind, SUORA straight,
+    VARI flush, TAYSKASI full house, NELOSET four of a kind,
+    VARISUORA straight flush, VIITOSET five of a kind (only with the
+    joker). One pair does not win.
+
+  From bet 3 two pairs and three of a kind pay 2 per credit instead of 3:
+  together with the higher take-back rates (section 5) this pays for the
+  joker.
 
   With no credits and nobody playing, the attract mode starts after about
   80 seconds: "POKERI (c) RAY 1990" with bouncing cards, the pay table and
@@ -51,7 +60,7 @@ Door open (F10), K16 (F6), then VOITONMAKSU twice:
 The game is the EPROM in IC43; the system part is IC30, IC38 and IC34
 (see HARDWARE.txt). The system part also contains a network protocol for
 a central computer ("vltCommProtocol", VLT = video lottery terminal, with
-Motorola/Intel byte order conversion). The emulator doesn't connect it;
+Motorola/Intel byte order conversion, see section 10). The emulator doesn't connect it;
 the game runs stand-alone.
 
 
@@ -123,7 +132,52 @@ balance the joker, which makes wins much more frequent.
 The emulator's bottom panel shows the live values.
 
 
-6. The correction: a payout controller
+6. The double-up (TUPLAUS)
+--------------------------
+ROM 0x18380; checked by playing it in the emulator.
+
+  TUPLAUS        doubles the stake on offer (the first press only shows
+                 TUPLAATKO, like VOITONMAKSU).
+  PIENI / SUURI  choose small / big (ROM 0x1A944 passes 1, 0x18ED8
+                 passes 2).
+
+Only after the choice is one card dealt, by the same dealer and random
+number as the poker game (section 4), from a fresh full deck. Nothing
+looks at the choice, the books or the payout percentage: there is no
+take-back here.
+
+    small   2, 3, 4, 5, 6 and the ace
+    big     8, 9, 10, J, Q, K
+    7       loses, whatever you chose
+    joker   wins (only in the deck from bet 3)
+
+So 24 of 52 cards win (46.2 %): on average a double returns 92.3 % of the
+stake. With the joker it is 25 of 53 (47.2 %), 94.3 %. Every double costs
+the player about 6-8 % on average; it is fair in the sense that it is not
+rigged, but not even.
+
+Doubling is offered only while the win is at most 50 (parameter 3306).
+When a won double goes over 50 the doubling ends, and the random number
+modulo 14 picks a message (ROM 0x1850A):
+
+    1   SINA KYNIT MINUT!    you fleeced me!
+    5   MISTA TIESIT!        how did you know!
+    7   USKOMATONTA          unbelievable
+    9   OLEN IHMEISSANI!     I'm amazed!
+   10   KOETAS UUDELLEEN!    try again!
+   12   LUOVUTAN!            I give up!
+   13   ONNEKAS ARVAUS!      lucky guess!
+  other  the developers' initials, in three lines:
+            EL  JT   ML  TP
+            RM  PJP  KP  SL  TT  LM
+            KJL JOLA OH  KK  MZ  ES
+
+So half of the time the machine shows a hidden credits screen. KJL is
+also the name in the link stamp shown in TESTI 2. (Read from the code;
+not yet seen in the emulator.)
+
+
+7. The correction: a payout controller
 --------------------------------------
 The game computes its running payout percentage from the books
 (ROM 0xD63A):
@@ -151,28 +205,42 @@ more generous. The machine steers itself to 80-90 %. A new machine (no
 bets yet) starts at the generous end, -13.
 
 
-7. Settings in the game's parameter block
+8. Settings in the game's parameter block
 -----------------------------------------
 The block at ROM 0x30052 (pointer at A6-29534) holds the game's settings.
-What we know of it:
+What we know of it ("?" = guess):
 
     offset   value   meaning
+     150..   bit masks for the buttons and lamps (two lists, 150-262
+             and 266-342) ?
+     382..   a table of number triples (60 1 60, 80 2 80, 100 3 100,
+             ... 3000 40 3000), maybe the game pricing ?
+     534..   the pay table of section 1: 8 words per bet level
+             (two pairs ... five of a kind), rows 64 bytes apart
      856       1     joker in use
+     986..   the screen texts: 244 pointers (relative to 0x30000) to
+             every text the game shows, from "OVI AUKI" (door open)
+             and the service menu to the fault names and the messages
+             of section 6. A version in another language would mostly
+             differ here.
+    2270..   16 colour words (a grey ramp and some colours) ?
     2360       0     other take-back mode: instead of the table, hands
                      rated 8 or more (probably straight flush and five of
                      a kind) are taken back with 50 % chance, if 3304 is
                      non-zero. Off in this ROM.
+    3216..   1 5 10 ...         coin and note values ?
     3240       3     lowest bet level with the joker
     3246..     table of section 5 (three words per bet level)
-    3276..   13 10 8 5 3        corrections above 90 % (section 6)
+    3276..   13 10 8 5 3        corrections above 90 % (section 7)
     3286..   -13 -10 -8 -5 -3   corrections below 80 %
     3304       0     see 2360
+    3306      50     largest win that may be doubled (section 6)
 
 Other versions of the game (other regions, the English one) probably
 differ in this block.
 
 
-8. Bookkeeping ("kassamuisti")
+9. Bookkeeping ("kassamuisti")
 ------------------------------
 Kept three times in battery RAM (pointers at A6-31532/-31528/-31524),
 in 18-byte records (16 bytes + CRC-16); ROM 0xDC70 recomputes a record's
@@ -209,9 +277,35 @@ The start-up self test also checksums the EPROMs: a modified ROM makes the
 machine close itself (closure code 0EE0).
 
 
-9. Not looked at yet
---------------------
-- The double-up game (TUPLAUS, PIENI/SUURI): it may have its own logic.
+10. The central computer link (vltCommProtocol)
+-----------------------------------------------
+The system part (ROM 0x6000-0x9600) contains a complete serial protocol
+for a central computer. VLT = video lottery terminal, the networked
+gaming machines of the time. A packet is
+
+    EA  type  sequence  length  data (at most 150 bytes)  check1 check2  0D
+
+Inside a packet the bytes EA, F3 and 0D are sent with an F3 in front of
+them. The two check bytes come from two running sums over the packet
+(ROM 0x8D3C). The packet types are CONNECT_REQ, CONNECTION_CHECK, ACK,
+NAK and MSG; the receiver complains about BAD_CHECKSUM and LONG_PACKET,
+and about message counters that don't match. The code converts numbers
+between Motorola and Intel byte order, so the other end was probably a
+PC.
+
+What it was for, guessing from the texts: reading the books and alarms
+from a distance and controlling cash collection. Texts like "PC windows
+ei vastaa" (PC Windows not responding), "Hairio tietoliikenteessa"
+(data link disturbed), "Rahastusta ei sallittu" (cash collection not
+allowed), "Sahkolukko jumissa" (electric lock stuck) and log lines like
+":Aut:vip;ovi ;syy ;pvm ;klo" (machine, door, reason, date, time) point
+that way. It probably uses the optional DUART chip, which the emulator
+doesn't have, so the game runs stand-alone.
+
+
+11. Not looked at yet
+---------------------
+- What the base return of the poker game is (before take-backs).
 - The attract mode's demo hands: that code (ROM 0x1BEAE, case 3 at
   0x1BF00) deals up to four times until it gets at least two pairs,
   probably so that the demo shows a win. It is not used in real play.

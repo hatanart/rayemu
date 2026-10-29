@@ -128,6 +128,7 @@ class App:
             if i % 50 == 0:
                 self.message("First start: initialising battery RAM ... %d%%" % (i * 100 // 1700))
         m.ensure_float(self.float_coins)
+        m.set_default_features()
         m.power_cycle()
         m.save_nvram()
         m.sound = snd

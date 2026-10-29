@@ -497,6 +497,17 @@ class Machine:
     # above level + 50 are moved to the cash box, 50 at a time (ROM 0xC3D4).
     HOPPER1_LEVEL = 162
     BOOK_PELIT, BOOK_VOITOT = 116, 120
+    # 202 = game features (long), set in TESTI 14 "PELIOMINAISUUDET"; bit
+    # list in the manual. Bit 13 "win music" plays the jackpot tune for a
+    # win of at least parameter 3306 (50) (ROM 0x1A7DE). Bit 29 "saver
+    # off" keeps the attract screen at full brightness (ROM 0x188D6, 0x1AEFA).
+    FEATURES = 202
+    WIN_MUSIC, SAVER_OFF = 1 << 13, 1 << 29
+
+    def set_default_features(self, value=WIN_MUSIC | SAVER_OFF):
+        """New books (features 0): turn on win music and saver off."""
+        if self.books_valid() and self.book_read(self.FEATURES) == 0:
+            self.book_write(self.FEATURES, value)
 
     def books_valid(self):
         p = self.mem.r32(self.BOOK_PTR)

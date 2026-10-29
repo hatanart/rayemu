@@ -34,7 +34,8 @@ from source, so you need a C compiler:
 
 The first game start also takes about 5 seconds longer: the emulator
 boots the machine once, puts 1000 coins (1000 mk) in its payout reserve (like an
-attendant filling the machine) and restarts it. The machine's battery
+attendant filling the machine), turns on two settings from TESTI 14
+(win music, and no dimming of the attract screen) and restarts it. The machine's battery
 backed memory is then kept in roms/pokeri-8460-1.1.nvram.
 Delete that file to start over.
 

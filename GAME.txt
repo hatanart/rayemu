@@ -261,7 +261,46 @@ CRC and copies it to the other copies. Known fields (byte offsets):
           the float is more than 50 coins above it, the game moves the
           excess to the cash box, up to 50 coins at a time (ROM 0xC3D4,
           coin unit command 25 n). With level 0 it keeps unloading.
+    202   game features (long), shown and set in TESTI 14
+          "PELIOMINAISUUDET" as 8 hex digits, see below
     252   the random number of section 3
+
+The features word (from the manual; 1 = on). Not used in the poker game:
+bits 0, 1, 3, 4, 5, 8, 11, 14, 15, 16, 17, 20, 31.
+
+     6   pay credits: credits are paid out too on VOITONMAKSU
+     7   routing error: close the machine after three bad routings (G18)
+     9   exchange: pay notes straight out as coins (change machine)
+    10   immediate pay: pay wins out automatically
+    12   coin count: counters show coins (scaled by the smallest coin)
+    13   win music: play the jackpot tune for a big win. In this ROM it
+         plays for a win of 50 or more (parameter 3306, ROM 0x1A7DE);
+         the manual says "more than half the top win".
+    18   return credits: give back credits and wins after a fault is reset
+    19   no punish: don't clear credits and wins on faults or tilts
+         (except a too-long hopper pulse)
+    21   test coins: pay test coins in TESTI 0
+    22   calibrate hoppers: the counted hopper contents become the counter
+    23   test coins: pay test coins during cash collection
+    24   drop coin transfer: hopper to cash box (only models with a coin
+         diverter after the hoppers)
+    25   tilt sensor: close the machine if it is tilted too far
+    26   hand pay all: jackpots paid fully by hand (normally only the
+         hundreds are)
+    27   partial pay: pay out automatically only the part over the
+         forced hand-pay limit
+    28   block notes: note acceptor off during payout
+    29   saver off: don't dim the attract screen (ROM 0x188D6, 0x1AEFA:
+         brightness 63 instead of 59/35)
+    30   network: connected to a casino network (section 10)
+
+Example from the manual: immediate pay = bit 10 = 00000400. A new machine
+has 00000000. The emulator sets 20002000 (win music and saver off) when it
+creates the battery RAM.
+
+The game has 16 sounds (table at A6-31440, filled from the parameter
+block); the code plays them by number (ROM 0xE19E). Sound 1 is the win
+music. Sound 53 plays sound (books byte 135) & 7; what sets that byte is not known yet.
 
 At start the game checks (ROM 0xB27C)
 

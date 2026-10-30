@@ -380,9 +380,7 @@ class HD63484:
         elif (op & 0xFE00) == 0xA800:            # CRCL
             self.circle(self.cpx, self.cpy, f[1] & 0x1FFF, op & 7)
         elif (op & 0xFE00) == 0xAC00:            # ELPS
-            a, b, dx = f[1], f[2], f[3]
-            ry = int((math.sqrt(b) * dx) / math.sqrt(a) + 0.33) if a else 0
-            self.bresenham_ellipse(self.cpx, self.cpy, dx, ry, op & 7)
+            self.ellipse(self.cpx, self.cpy, f[1], f[2], f[3], op & 7)
         elif (op & 0xFE00) == 0xB400:            # RARC
             self.rarc(self.cpx, self.cpy, s16(f[1]), s16(f[2]), s16(f[3]), s16(f[4]),
                       1 if op & 0x100 else 0, op & 7)
@@ -833,38 +831,59 @@ class HD63484:
             for px, py in ((x, y), (x, -y), (-x, y), (-x, -y)):
                 dot(xc + px, yc + py, opm, c)
 
-    def _ellipse_points(self, a, b):
-        """Integer points of an ellipse with radii a, b around (0, 0)."""
+    def _ellipse_points(self, A, B, dx):
+        """Integer points of B*x*x + A*y*y = B*dx*dx around (0, 0) (ELPS).
+
+        A midpoint walk scaled by four, evaluated against the true equation,
+        so the second axis dx*sqrt(B/A) is never rounded to a whole ellipse.
+        Method from Vesuri's RAY Pokeri Amiga port
+        (github.com/vesuri/raypokeri, Hd63484::curve). Same points as
+        cray's ellipse_points().
+        """
+        if not A or not B:
+            return {(0, 0)}
+        a, b, R = A, B, B * dx * dx
+        # y axis rounded to the nearest whole pixel; it starts the walk
+        qy = 0
+        bit = 1 << 15
+        while bit:
+            if a * (qy | bit) ** 2 <= R:
+                qy |= bit
+            bit >>= 1
+        if 4 * R >= a * (2 * qy + 1) ** 2:
+            qy += 1
         pts = set()
-        if a <= 0 or b <= 0:
-            pts.add((0, 0))
-            return pts
-        a2, b2 = a * a, b * b
-        x, y = 0, b
-        S = a2 * (1 - 2 * b) + 2 * b2
-        T = b2 - 2 * a2 * (2 * b - 1)
-        while True:
-            pts.update(((x, y), (-x, y), (x, -y), (-x, -y)))
-            if y <= 0:
-                break
-            if S < 0:
-                S += 2 * b2 * (2 * x + 3)
-                T += 4 * b2 * (x + 1)
-                x += 1
-            elif T < 0:
-                S += 2 * b2 * (2 * x + 3) - 4 * a2 * (y - 1)
-                T += 4 * b2 * (x + 1) - 2 * a2 * (2 * y - 3)
-                x += 1
-                y -= 1
+        # flat part: the start includes the residual a*qy*qy - R, since the
+        # rounded axis needn't lie on the curve
+        qx, ddx, ddy = 0, 0, 2 * a * qy
+        d = 4 * b - 4 * a * qy + a + 4 * (a * qy * qy - R)
+        while ddx < ddy:
+            pts.update(((qx, qy), (-qx, qy), (qx, -qy), (-qx, -qy)))
+            qx += 1
+            ddx += 2 * b
+            if d < 0:
+                d += 4 * ddx + 4 * b
             else:
-                S -= 4 * a2 * (y - 1)
-                T -= 2 * a2 * (2 * y - 3)
-                y -= 1
+                qy -= 1
+                ddy -= 2 * a
+                d += 4 * ddx - 4 * ddy + 4 * b
+        # steep part
+        d = b * (2 * qx + 1) ** 2 + 4 * a * (qy - 1) ** 2 - 4 * R
+        while qy >= 0:
+            pts.update(((qx, qy), (-qx, qy), (qx, -qy), (-qx, -qy)))
+            qy -= 1
+            ddy -= 2 * a
+            if d > 0:
+                d += 4 * a - 4 * ddy
+            else:
+                qx += 1
+                ddx += 2 * b
+                d += 4 * ddx - 4 * ddy + 4 * a
         return pts
 
-    def bresenham_ellipse(self, cx, cy, a, b, opm):
-        """Full ellipse with radii a, b around (cx, cy)."""
-        pts = self._ellipse_points(a, b)
+    def ellipse(self, cx, cy, A, B, dx, opm):
+        """ELPS: full ellipse B*x*x + A*y*y = B*dx*dx around (cx, cy)."""
+        pts = self._ellipse_points(A, B, dx)
         dot, c = self.dot, self.cl0
         for x, y in pts:
             dot(cx + x, cy + y, opm, c)

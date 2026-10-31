@@ -4,11 +4,19 @@ PIA1 port A = data bus D0-D7.
 PIA1 port B: PB0 /WRITE, PB1 MODE (AY BC1), PB2 STROBE, PB7 SSEL (AY BC2).
 Lamp data is latched on a rising MODE edge and moved into lamp latch
 (data & 7) on a falling STROBE edge. Latch 2 bit 7 drives AY BDIR.
+
+Latch 2 bit 3 (lamp bit 19) is VOL, not a lamp: it turns on Q13, which
+shorts the AY mixing point to ground through 1k (R16). With the 10k mixing
+resistors and the 28k to the amplifier that leaves 1/4 of the level (-12 dB).
+The game switches to loud (VOL off) for the doubling music, the lost-double
+"kosh" and sound 10, and back to quiet after them (ROM 0x1D12).
 """
 
 MODE = 0x0200
 STROBE = 0x0400
 SSEL = 0x8000
+VOL = 0x08            # in latch 2
+VOL_QUIET = 0.25
 
 
 class LightSound:
@@ -24,6 +32,10 @@ class LightSound:
         self.ay_regs = [0] * 16
         self.psg_read = False
         self.last_data = 0
+
+    @property
+    def sound_gain(self):
+        return VOL_QUIET if self.lights[2] & VOL else 1.0
 
     @property
     def lamps(self):

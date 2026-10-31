@@ -388,7 +388,7 @@ class Machine:
         self.frame_start = self.cycles
         ran = self.run_cycles(CPU_HZ // 100)
         if self.sound:
-            self.audio.append(self.ay.render(ran))
+            self.audio.append(self.ay.render(ran, self.ls.sound_gain))
         else:
             self.ay.events.clear()
         self.frame += 1

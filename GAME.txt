@@ -382,6 +382,9 @@ block); the code plays them by number (ROM 0xE19E). As they sound:
 
 The bet sound is sound (bet mod 5) + 1 (ROM 0x17BF4), so bets 1-5 play
 sounds 2, 3, 4, 5, 1. Sounds 7, 12 and 15 loop until the game stops them.
+Sounds 10, 11 and 12 are played loud, everything else at 1/4 of that: the
+board has a volume switch (HARDWARE.txt, PIA1) that the game turns up just
+for them and back down afterwards.
 Two more groups of sounds (A and B, ROM 0xDFEE and 0xDF8E; names from
 Vesuri's disassembly) play one entry per call, by sound numbers 0x34 and
 0x33. Group A is the bass line under the "VOITIT n  TUPLAATKO" prompt:

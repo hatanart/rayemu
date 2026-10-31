@@ -106,8 +106,9 @@ class AY8910:
             later = first
         return np.where(cyc == 0, first, later).astype(np.int64)
 
-    def render(self, frame_cycles):
-        """Samples (float, about -1..1) for one frame of frame_cycles CPU cycles."""
+    def render(self, frame_cycles, gain=1.0):
+        """Samples (float, about -1..1) for one frame of frame_cycles CPU cycles,
+        times gain (the board's volume switch, see lightsound.py)."""
         exact = frame_cycles * self.rate / self.cpu_hz + self.carry
         total = int(exact)
         self.carry = exact - total
@@ -124,7 +125,7 @@ class AY8910:
         self.events = []
         if total > done:
             chunks.append(self._segment(total - done))
-        out = np.concatenate(chunks) / 3.0 if chunks else np.zeros(0)
+        out = np.concatenate(chunks) * (gain / 3.0) if chunks else np.zeros(0)
         if out.size:
             # slow DC removal so silence sits at zero (no clicks on start/stop)
             self.dc = 0.97 * self.dc + 0.03 * float(out.mean())

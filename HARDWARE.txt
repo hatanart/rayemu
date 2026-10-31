@@ -100,10 +100,23 @@ PIA1 - light/sound board
   PB2             STROBE
   PB7             SSEL (AY BC2)
 Lamp data is latched on a rising MODE edge and moved into lamp latch
-(data & 7) on a falling STROBE edge. There are 3 latches = 24 lamps.
-Latch 2 bit 7 drives AY BDIR.
+(data & 7) on a falling STROBE edge. There are 3 latches = 24 outputs.
+Latch 2 bit 7 drives AY BDIR, and latch 2 bit 3 (lamp bit 19) is VOL, the
+sound volume switch (below); the other 22 are lamps. (The latch chips'
+inputs are not wired in bit order: VOL is pin 16 of IC2 on the schematic.)
   CA1             interrupt (vector 70)
   CB2             100 Hz mains phase (vector 67)
+
+Sound (light/sound board schematic, page 2): the AY-3-8912 has its own
+1 MHz crystal. Each of its three outputs has 1k to ground and 10k to a
+common mixing point, which goes through 27k and the volume trimmer P1 (1k)
+to a TDA1011A amplifier at 12 V, and through 1000 uF to the speaker. When
+VOL is on, transistor Q13 shorts the mixing point to ground through 1k
+(R16), which leaves 1/4 of the level (-12 dB). The game keeps it on (quiet)
+and turns it off (loud) for the doubling music, the lost-double "kosh" and
+the card-holding sound; ROM 0x1D12 sets it (0 = quiet, 1 = loud). Most of
+the sounds use the chip's envelope generator, which always plays at full
+level, so the chip's own volume registers couldn't have done this.
 
 
 PIA2 - buttons and switches (all active low)

@@ -2,8 +2,8 @@ RAY video poker emulator - test version
 =======================================
 
 An emulator of the Finnish RAY (Raha-automaattiyhdistys) "POKERI" video
-poker machine from 1990 (game 8460-1.1 from October 1994, on system
-6457/6458-7.7). The 68000 CPU
+poker machine from 1990 (program 6457/6458-7.7 with game parameters
+8460-1.1 from October 1994). The 68000 CPU
 runs on the Musashi core (Python package machine68k); the rest of the
 board (graphics chip, sound chip, I/O chips, coin processor) is written
 in Python.
@@ -17,6 +17,10 @@ repository. Put the four EPROM images into roms/ with these names:
 
 (64 KB each; see roms/pokeri-8460-1.1.ray). ./run.sh --list-roms checks
 them against the checksums printed on the chip labels.
+
+The 200 MK version (top win 200 instead of 100) is a second set: the same
+three program chips plus its own IC43, 7907-2.0_ic43.bin. Start it with
+./run.sh --rom pokeri-7907-2.0 (run.bat --rom pokeri-7907-2.0).
 
 Starting
 --------
@@ -115,7 +119,9 @@ Known gaps
 
 Other ROM versions
 ------------------
-The board has four 64 KB EPROMs; each is one file in roms/, named after
+The board has four 64 KB EPROMs: three hold the program, the fourth
+(IC43) the game's parameters (pay table, limits, texts), so versions with
+other prizes differ only in IC43. Each chip is one file in roms/, named after
 its label and socket (e.g. 6458-7.7_ic38.bin). A ROM set is a text file
 roms/<set name>.ray listing the chips (address, socket, file, label sum);
 see roms/pokeri-8460-1.1.ray. To add a version, put its chip files in
@@ -126,6 +132,33 @@ roms/ and write a .ray file; then start it with --rom <set name>.
 
 TESTI 2 "AUTOMAATIN TIEDOT" (door open, K16, then P twice) shows the game
 and system numbers and versions.
+
+Making your own IC43
+--------------------
+pyray/paramrom.py turns an IC43 into a settings file you can edit (pay
+table, limits, the payout controller's tables, all screen texts, the
+sounds as sound chip steps, and the font as pictures of . and X) and
+back into a chip. After the first ./run.sh the Python is in .venv:
+
+  .venv/bin/python -m pyray.paramrom dump roms/8460-1.1_ic43.bin my.txt
+  (edit my.txt)
+  .venv/bin/python -m pyray.paramrom build my.txt roms/my_ic43.bin
+
+(on Windows .venv\Scripts\python instead of .venv/bin/python). Then copy
+roms/pokeri-8460-1.1.ray to roms/my-poker.ray, put my_ic43.bin on its
+IC43 line, change its title: line, and start it with
+./run.sh --rom my-poker. build fixes the
+module's checksum; without that the game doesn't start. A text may get
+shorter, not longer. Name your sets so nobody takes them for RAY's,
+and change the version and built lines at the top: TESTI 2 shows them
+(e.g. version = 9999-0.1 and
+built max 29 = "OMA PIIRI 30.10.2026\n").
+
+params/ has both chips already dumped (pokeri-8460-1.1.txt and
+pokeri-7907-2.0.txt), to read or to start from.
+
+For example, a machine that never takes a win back (GAME.txt section 5):
+set all takeback.bet lines and correction_high to 0.
 
 HARDWARE.txt describes the board as far as it is known, and GAME.txt
 the game: rules, dealing, the payout controller, settings and bookkeeping.

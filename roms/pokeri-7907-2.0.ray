@@ -1,0 +1,16 @@
+# RAY ROM set: the 200 MK poker, for the pyray emulator.
+# Same program chips as pokeri-8460-1.1; only IC43 (the game's parameter
+# module) is different. It came as a file called PARA200J, not from a
+# labelled chip, so it has no label sum. TESTI 2 shows it as 7907-2.0.
+#
+# IC43 is the OS-9 module "g200para", game 7907-2.0, built FRI APR 16
+# 10:34:05 1993 (the 100 MK one is module "gamepara", 8460-1.1, 10.10.94).
+# The pay table is the only game difference: straight flush 30-150
+# instead of 20-100, five of a kind 120/160/200 instead of 60/80/100.
+
+title: POKERI 200 (Finnish), game 7907-2.0 (16.04.93), system 6457/6458-7.7 (27.09.94)
+
+00000  IC30  6457-7.7_ic30.bin  A8EF   # program ("romgame"), reset vectors and start-up
+10000  IC38  6458-7.7_ic38.bin  14E2   # program
+20000  IC34  6458-7.7_ic34.bin  01C5   # program, linked 27.09.94
+30000  IC43  7907-2.0_ic43.bin  -      # game parameters ("g200para"), 16.04.93

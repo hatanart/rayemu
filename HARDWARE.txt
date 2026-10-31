@@ -50,14 +50,21 @@ other. The bracketed number on a label is the 16-bit sum of the chip's bytes
 (--list-roms checks these). Each chip is one file in roms/:
 
     address      chip  label             sum   contents
-    00000-0FFFF  IC30  6457-7.7 J        A8EF  system / library, reset vectors
-    10000-1FFFF  IC38  6458-7.7 J        14E2  system / library
-    20000-2FFFF  IC34  6458-7.7 J        01C5  system / library, linked 27.09.94
-    30000-3FFFF  IC43  8460-1.1 J1/100   -     the poker game, built 10.10.94
+    00000-0FFFF  IC30  6457-7.7 J        A8EF  program ("romgame"), reset vectors
+    10000-1FFFF  IC38  6458-7.7 J        14E2  program
+    20000-2FFFF  IC34  6458-7.7 J        01C5  program, linked 27.09.94
+    30000-3FFFF  IC43  8460-1.1 J1/100   -     game parameters ("gamepara"), 10.10.94
 
-So the game is one chip (IC43) on top of a common system (7.7). Other
-versions of the poker game, or other games on the same board such as
-Noppa, may only differ in IC43.
+The first three chips hold one OS-9 module, "romgame" (0x00400-0x276FE):
+the whole program, the poker code included (the double-up at 0x18380, for
+example, is in IC38). IC43 holds only the module "gamepara" (0x30000-
+0x3640, the rest of the chip is empty): the parameter block of GAME.txt
+section 8 (pay table, limits, all screen texts) and the sound data.
+
+So a version with other prizes or in another language is another IC43 on
+the same program. The 200 MK poker (game 7907-2.0, module "g200para", 16.04.93, ROM set
+pokeri-7907-2.0) differs only in IC43. Another game, such as Noppa,
+would need its own program chips as well.
 
 
 Interrupts

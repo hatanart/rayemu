@@ -1,7 +1,8 @@
 RAY POKERI - the game and how it decides
 ========================================
 
-What we have found out about the game program (8460-1.1, 10.10.1994) by
+What we have found out about the game (program 7.7 with game parameters
+8460-1.1 of 10.10.1994) by
 reading the ROM and by watching it run in the emulator. ROM addresses are
 in hex; "A6-31152" means a variable at 0x48B00 - 31152 in RAM (the game
 keeps its variables relative to register A6 = 0x48B00). "?" marks guesses.
@@ -21,7 +22,9 @@ keeps its variables relative to register A6 = 0x48B00). "?" marks guesses.
   TUPLAUS (D) starts the double-up game with PIENI / SUURI (small / big),
   see section 6. VOITONMAKSU (P) takes the win: the first press after a
   win is ignored, the second moves it onto the VOITOT counter. VOITONMAKSU
-  then pays VOITOT out as coins from the hopper.
+  then pays VOITOT out as coins from the hopper. With no credits
+  (PELIT 0) the bet comes from VOITOT, so you can play on with your wins
+  and cash out whenever you like.
 
   Pay table (credits won, parameter block offset 534, one row per bet).
   It is not a plain multiple of bet 1:
@@ -52,13 +55,21 @@ keeps its variables relative to register A6 = 0x48B00). "?" marks guesses.
 ---------------------------------------------
 Door open (F10), K16 (F6), then VOITONMAKSU twice:
 
-    8460-1.1      the game, built MON OCT 10 16:10:03 EET 1994
-    6458-7.7      the system part, linked TUE SEP 27 10:49:39 EET 1994,
+    8460-1.1      the game parameters, built MON OCT 10 16:10:03 EET 1994
+    6458-7.7      the program, linked TUE SEP 27 10:49:39 EET 1994,
                   by "KJL" on "SUNRAY9", in /USR2/LINK/J1
     42463242      checksum?
 
-The game is the EPROM in IC43; the system part is IC30, IC38 and IC34
-(see HARDWARE.txt). The system part also contains a network protocol for
+The game number and date come from IC43: the version is the first four
+bytes of the parameter block in BCD (01 01 84 60 = 1.1, 8460) and the
+date is the text right after the module. The 200 MK chip shows 7907-2.0
+and FRI APR 16 10:34:05 EET DST 1993. The lines "61" and "42463242" stay
+the same when IC43's contents change; where they come from isn't known
+yet (battery RAM ?).
+
+The program, the poker code included, is one OS-9 module ("romgame") in
+IC30, IC38 and IC34; IC43 holds only the module "gamepara" with the game's
+parameters (section 8, and HARDWARE.txt). The program also contains a network protocol for
 a central computer ("vltCommProtocol", VLT = video lottery terminal, with
 Motorola/Intel byte order conversion, see section 10). The emulator doesn't connect it;
 the game runs stand-alone.
@@ -211,8 +222,19 @@ The block at ROM 0x30052 (pointer at A6-29534) holds the game's settings.
 What we know of it ("?" = guess):
 
     offset   value   meaning
-     150..   bit masks for the buttons and lamps (two lists, 150-262
-             and 266-342) ?
+     122   01080000  factory default of the features word (TESTI 14):
+                     bits 19 no punish and 24 drop coin transfer. The
+                     200 MK chip has 000000C8.
+     134..   factory defaults for TESTI 13 "PELIN HINNOITTELU", copied to
+             books 170-200 (ROM 0xA6A8): coin 1-4 values (134-137: 1 5
+             10 0; the 200 MK chip 1 5 0 0), eight more values, probably
+             the note values (2354, 2355, 138-144, 2356, 2358), minimum
+             price (146: 1) and maximum bet (148: 5)
+     150..   lamp masks: one lamp each, copied to A6-32758 on; the game
+             switches lamps only through these (bit 0 TUPLAUS, 3 PIENI,
+             6 VOITONMAKSU, 16 SUURI, ...; pyray.paramrom names them)
+     266..   the lamps one at a time, probably the lamp test's order:
+             JAKO, VOITONMAKSU, PANOS, SUURI, PIENI, TUPLAUS, VALITSE 1-5
      382..   a table of number triples (60 1 60, 80 2 80, 100 3 100,
              ... 3000 40 3000), maybe the game pricing ?
      534..   the pay table of section 1: 8 words per bet level
@@ -223,7 +245,14 @@ What we know of it ("?" = guess):
              and the service menu to the fault names and the messages
              of section 6. A version in another language would mostly
              differ here.
-    2270..   16 colour words (a grey ramp and some colours) ?
+    2266       font: pointer to 115 characters of 16x14 pixels, codes
+             20-92 (pyray.paramrom shows them as pictures). Besides
+             ASCII and the Finnish letters it has the card suits
+             (7E-81), card ranks 1-10, J, Q, K, A (82-90), a middle
+             finger (91) and a member (92). Normal text can only print
+             codes 20-7F, so the last ones never appear on screen.
+    2270..   colours used by the game: palette numbers, four pixels per
+             word (0x3333 = red); pyray.paramrom names them
     2360       0     other take-back mode: instead of the table, hands
                      rated 8 or more (probably straight flush and five of
                      a kind) are taken back with 50 % chance, if 3304 is
@@ -236,8 +265,24 @@ What we know of it ("?" = guess):
     3304       0     see 2360
     3306      50     largest win that may be doubled (section 6)
 
-Other versions of the game (other regions, the English one) probably
-differ in this block.
+Other versions of the game (other prizes, other languages) differ in
+this block, i.e. in IC43 only. The 200 MK poker is one: its IC43 holds the
+module "g200para" (game 7907-2.0, 16.04.93, ROM set pokeri-7907-2.0). Its pay table
+differs at the top:
+
+    bet           1    2    3    4    5
+    VARISUORA    30   60   90  120  150     (here 20 40 60 80 100)
+    VIITOSET      -    -  120  160  200     (here 60 80 100)
+
+The other known settings are the same (take-backs, corrections, hand pay,
+doubling limit, texts). Coin value 3 is missing (1 and 5 only), and
+offsets 104 (150, here 80) and 122/126 differ; what those are isn't known.
+
+The payout controller of section 7 is the same in it: the same program
+and the same take-back table and corrections. It never takes back the
+hands that pay more here, so the bigger top wins only push the payout
+percentage up, and the controller answers by taking back more of the
+small wins. In the long run it still steers to 80-90 %.
 
 
 9. Bookkeeping ("kassamuisti")
@@ -266,10 +311,22 @@ CRC and copies it to the other copies. Known fields (byte offsets):
     252   the random number of section 3
 
 The features word (from the manual; 1 = on). Not used in the poker game:
-bits 0, 1, 3, 4, 5, 8, 11, 14, 15, 16, 17, 20, 31.
+bits 0, 1, 3, 4, 5, 8, 11, 14, 15, 16, 17, 20, 31. The program does test
+four of these, probably for other games or cabinets on the same program:
+11 (a start-up check, ROM 0x75E0), 14 (ignores parameter 2352, 0x130AA),
+15 (a coin unit check with parameter 528, 0x9A14) and 31 (picks one of
+two routines, 0xFDD6). The other nine are never tested.
 
      6   pay credits: credits are paid out too on VOITONMAKSU
-     7   routing error: close the machine after three bad routings (G18)
+     7   routing error: close the machine after three bad routings. The
+         NRI G-18 coin selector checks each coin and steers it with a
+         flap into the hopper or the cash box; sensors check it arrives.
+         The game scans the coin unit's status for codes 71-74, "RAHA EI
+         HOPPERIIN KAN. 1-4" (the coin didn't reach the hopper, channel
+         1-4; ROM 0x1087A). One lost coin is a jam, three look like
+         cheating (a coin on a string, a blocked chute), so the machine
+         closes. On in the 200 MK chip's defaults, off in ours; the
+         emulated coin unit never misroutes a coin.
      9   exchange: pay notes straight out as coins (change machine)
     10   immediate pay: pay wins out automatically
     12   coin count: counters show coins (scaled by the smallest coin)
@@ -294,13 +351,46 @@ bits 0, 1, 3, 4, 5, 8, 11, 14, 15, 16, 17, 20, 31.
          brightness 63 instead of 59/35)
     30   network: connected to a casino network (section 10)
 
+The factory default comes from the game parameters (122): 01080000 in
+ours (19 no punish, 24 drop coin transfer), 000000C8 in the 200 MK chip
+(6, 7 and the unused 3).
+
 Example from the manual: immediate pay = bit 10 = 00000400. A new machine
 has 00000000. The emulator sets 20002000 (win music and saver off) when it
 creates the battery RAM.
 
 The game has 16 sounds (table at A6-31440, filled from the parameter
-block); the code plays them by number (ROM 0xE19E). Sound 1 is the win
-music. Sound 53 plays sound (books byte 135) & 7; what sets that byte is not known yet.
+block); the code plays them by number (ROM 0xE19E). As they sound:
+
+     0  a card laid on the table
+     1  ding: bet 5, also at start-up
+     2  sad (minor) ding: the bet goes back to 1
+     3  bet 2
+     4  bet 3
+     5  bet 4
+     6  shuffle
+     7  heartbeat
+     8  one for each coin won
+     9  another kind of shuffle (after the shuffle, ROM 0x1AA0A)
+    10  choosing (holding) a card (ROM 0x18BBE); a short click like the
+        first note of 6
+    11  "kosh": the double is lost
+    12  doubling music
+    13  attract mode ocean waves
+    14  attract mode slower ocean waves
+    15  jackpot music, played when feature bit 13 is on (ROM 0x1AC44)
+
+The bet sound is sound (bet mod 5) + 1 (ROM 0x17BF4), so bets 1-5 play
+sounds 2, 3, 4, 5, 1. Sounds 7, 12 and 15 loop until the game stops them.
+Two more groups of sounds (A and B, ROM 0xDFEE and 0xDF8E; names from
+Vesuri's disassembly) play one entry per call, by sound numbers 0x34 and
+0x33. Group A is the bass line under the "VOITIT n  TUPLAATKO" prompt:
+four notes, one every 0.6 s, round and round while the game waits (its
+list has a fifth entry that is not played). Group B is one sound used
+four times; where it is heard isn't known yet. Sound 0x35 plays sound (books byte 135) & 7; what sets that
+byte is not known yet. We don't remember hearing the ocean waves on
+real machines, so a setting may have turned them off; in the emulator
+they play in the attract mode.
 
 At start the game checks (ROM 0xB27C)
 

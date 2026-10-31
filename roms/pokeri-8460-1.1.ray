@@ -18,7 +18,7 @@
 
 title: POKERI (Finnish), game 8460-1.1 (10.10.94), system 6457/6458-7.7 (27.09.94)
 
-00000  IC30  6457-7.7_ic30.bin  A8EF   # system, reset vectors and start-up
-10000  IC38  6458-7.7_ic38.bin  14E2   # system
-20000  IC34  6458-7.7_ic34.bin  01C5   # system, linked 27.09.94
-30000  IC43  8460-1.1_ic43.bin  -      # the game, 10.10.94 (label J1/100, no sum)
+00000  IC30  6457-7.7_ic30.bin  A8EF   # program ("romgame"), reset vectors and start-up
+10000  IC38  6458-7.7_ic38.bin  14E2   # program
+20000  IC34  6458-7.7_ic34.bin  01C5   # program, linked 27.09.94
+30000  IC43  8460-1.1_ic43.bin  -      # game parameters ("gamepara"), 10.10.94 (label J1/100, no sum)

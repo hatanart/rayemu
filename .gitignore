@@ -2,6 +2,8 @@
 # repository. roms/*.ray (which chips make up a game, with their checksums)
 # is ours and stays.
 roms/*.bin
+# params/: ROM contents dumped by pyray.paramrom, same rule as the ROMs.
+params/
 *.nvram
 nvram.bin
 

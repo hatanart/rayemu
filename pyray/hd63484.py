@@ -60,6 +60,7 @@ class HD63484:
         self.clock = None
         self.cpu_per_cycle = 0.0
         self.dots = 0
+        self.paint_runs = 0
         self.reset()
 
     # ------------------------------------------------------------------
@@ -274,14 +275,25 @@ class HD63484:
         op = f[0]
         P = 6 if op & 4 else 4
         top = op >> 12
-        if top < 4:                                   # register access
+        if top < 2:                                   # register access
+            if (op & 0xFC00) in (0x0800, 0x0C00):
+                return 6                              # WPR / RPR
             if (op & 0xFFF0) == 0x1800:
                 return 4 * f[1] + 8                   # WPTN
-            return 8
+            if (op & 0xFFF0) == 0x1C00:
+                return 4 * f[1] + 10                  # RPTN
+            return 8                                  # ORG
         if top < 8:                                   # word transfers
-            if op in (0x4400, 0x4800) or (op & 0xFFFC) == 0x4C00:
-                return 12                             # RD / WT / MOD
+            if op == 0x4400:
+                return 12                             # RD
+            if op == 0x4800 or (op & 0xFFFC) == 0x4C00:
+                return 8                              # WT / MOD
             x, y = abs(s16(f[-2])) + 1, abs(s16(f[-1])) + 1
+            if top < 4:                               # DMA: [x*y/8] rounded up
+                w = (x * y + 7) // 8
+                if op == 0x2400:
+                    return (4 * x + 8) * y + 12 * w + 65    # DRD (62..68)
+                return (4 * x + 8) * y + 16 * w + 34        # DWT / DMOD
             if op == 0x5800:
                 return (2 * x + 8) * y + 12           # CLR
             if (op & 0xFFFC) == 0x5C00:
@@ -289,14 +301,22 @@ class HD63484:
             return (6 * x + 10) * y + 12              # CPY / SCPY
         if (op & 0xF800) == 0x8000:
             return 56                                 # AMOVE / RMOVE
-        if (op & 0xF800) in (0x8800, 0x9000):
-            return P * dots + 54                      # lines, rectangles
-        if (op & 0xF000) == 0x9000 or (op & 0xF800) == 0xA000:
-            return P * dots + 16 * f[1] + 20          # polylines, polygons
-        if (op & 0xFE00) in (0xA800, 0xB000, 0xB400):
-            return 8 * dots + 66                      # circle, arcs
-        if (op & 0xF800) == 0xA800 or (op & 0xF800) == 0xB800:
-            return 10 * dots + 96                     # ellipse, ellipse arcs
+        if (op & 0xF800) == 0x8800:
+            return P * dots + 18                      # ALINE / RLINE
+        if (op & 0xF800) == 0x9000:
+            return P * dots + 54                      # ARCT / RRCT: 2P(A+B)+54
+        if (op & 0xF800) == 0x9800:
+            return P * dots + 16 * f[1] + 8           # APLL / RPLL
+        if (op & 0xF800) == 0xA000:
+            return P * dots + 16 * f[1] + 20          # APLG / RPLG
+        if (op & 0xFE00) == 0xA800:
+            return 8 * dots + 66                      # CRCL
+        if (op & 0xFE00) == 0xAC00:
+            return 10 * dots + 90                     # ELPS
+        if (op & 0xFE00) in (0xB000, 0xB400):
+            return 8 * dots + 18                      # AARC / RARC
+        if (op & 0xF800) == 0xB800:
+            return 10 * dots + 96                     # AEARC / REARC
         if (op & 0xFFF0) in (0xC000, 0xC400):         # filled rectangles
             if (op & 0xFFF8) == 0xC400:
                 a, b = abs(s16(f[1])) + 1, abs(s16(f[2])) + 1
@@ -304,7 +324,10 @@ class HD63484:
                 a, b = abs(s16(f[1]) - self.cpx) + 1, abs(s16(f[2]) - self.cpy) + 1
             return (P * a + 8) * b + 18
         if (op & 0xFE00) == 0xC800:
-            return 20 * dots + 100                    # PAINT
+            # PAINT: the manual gives (18A+102)B-58 for a rectangle (A wide,
+            # B rows): 18 per pixel and 102 per row. Taken here per run of
+            # pixels in a row, which is the same for a rectangle.
+            return 18 * dots + 102 * self.paint_runs - 58
         if (op & 0xFFF8) == 0xCC00:
             return 8                                  # DOT
         if (op & 0xF000) == 0xD000:
@@ -993,15 +1016,19 @@ class HD63484:
         bpp = self._bpp()
         rep = {4: 0x1111, 8: 0x0101}.get(bpp, 1)
         edg = self.edg
+        self.paint_runs = 0
         stack = [(sx, sy)]
         seen = set()
         n = 0
+        runs = 0        # horizontal runs of filled pixels, for the timing
         while stack and n < 200000:
             x, y = stack.pop()
             if (x, y) in seen:
                 continue
             seen.add((x, y))
             n += 1
+            runs += 1 - ((x - 1, y) in seen) - ((x + 1, y) in seen)
+            self.paint_runs = runs
             self.dot(x, y, 0, col)
             for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
                 if (nx, ny) in seen:

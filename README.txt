@@ -38,8 +38,8 @@ from source, so you need a C compiler:
 
 The first game start also takes about 5 seconds longer: the emulator
 boots the machine once, puts 1000 coins (1000 mk) in its payout reserve (like an
-attendant filling the machine), turns on two settings from TESTI 14
-(win music, and no dimming of the attract screen) and restarts it. The machine's battery
+attendant filling the machine), turns on win music in TESTI 14 and
+restarts it. The machine's battery
 backed memory is then kept in roms/pokeri-8460-1.1.nvram.
 Delete that file to start over.
 
@@ -96,8 +96,8 @@ Options
   --ay-clock HZ     sound chip clock (default 1000000)
   --audio-latency MS  sound buffering (default 40); raise it, e.g. to 80,
                     if the sound crackles on a slow computer
-  --acrtc-clock HZ  graphics chip drawing speed (default 3000000; higher =
-                    faster animations, 0 = draw instantly)
+  --acrtc-clock HZ  graphics chip clock (default 3000000, the board's 3 MHz;
+                    higher = faster animations, 0 = draw instantly)
   --rom SET|FILE    ROM set to run (default pokeri-8460-1.1, from its .ray
                     file in roms/), or one joined
                     256 KB ROM file
@@ -111,8 +111,6 @@ Pi 4 is borderline, a Pi 5 is fine.
 
 Known gaps
 ----------
-- The graphics chip speed (3 MHz) is an estimate. If animations look too
-  slow or too fast compared to a real machine, try --acrtc-clock.
 - The MC68681 DUART is not emulated (the game runs without it).
 - The hopper count test (TESTI 11) shows 99 after paying 100.
 - K13-K15, SRVC1/2 and some PIA3 inputs are not fully understood.

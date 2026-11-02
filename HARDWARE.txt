@@ -9,8 +9,9 @@ guesses.
 Main board
 ----------
   CPU        Motorola 68000, 8 MHz
-  Video      Hitachi HD63484 ACRTC graphics processor, 4 bits per pixel,
-             608 x 292 visible, 16 fixed colours
+  Video      Hitachi HD63484 ACRTC graphics processor, 3 MHz clock (2CLK:
+             a 12 MHz crystal divided by 2 twice in logic, schematics
+             page 1), 4 bits per pixel, 608 x 292 visible, 16 fixed colours
   I/O        3 x MC6821 PIA, MC6850 ACIAs (serial), MC68681 DUART (optional)
   Sound      AY-3-8910 on the light/sound board, 1 MHz clock, driven
              through PIA1
@@ -65,6 +66,21 @@ So a version with other prizes or in another language is another IC43 on
 the same program. The 200 MK poker (game 7907-2.0, module "g200para", 16.04.93, ROM set
 pokeri-7907-2.0) differs only in IC43. Another game, such as Noppa,
 would need its own program chips as well.
+
+OS-9 is a small real-time operating system from Microware, first for the
+6809 (1979-80) and then the 68000 (OS-9/68000), common in embedded and
+industrial systems and in Philips CD-i. It has nothing to do with Sun
+(SunOS) or Apple's Mac OS 9. The ROMs hold no OS-9 kernel (no "OS-9",
+"Microware" or "kernel" anywhere): the game runs straight on the
+hardware from its own start-up code. RAY's programmers most likely wrote
+it in C on an OS-9 development system and packed it into OS-9 modules:
+  - each module has the OS-9/68000 header: sync 4AFC, size, name, type
+    01 (program), language 01 (68000 code), header parity, and a 24-bit
+    CRC at the end, which the start-up self test checks (pyray/
+    paramrom.py recomputes both when it builds an IC43)
+  - Microware C keeps the global variables relative to register A6,
+    which is why the code is full of -30991(a6) and jsr -27758(a6), and
+    why these notes name RAM as A6-nnnnn
 
 
 Interrupts

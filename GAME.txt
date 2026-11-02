@@ -356,7 +356,7 @@ ours (19 no punish, 24 drop coin transfer), 000000C8 in the 200 MK chip
 (6, 7 and the unused 3).
 
 Example from the manual: immediate pay = bit 10 = 00000400. A new machine
-has 00000000. The emulator sets 20002000 (win music and saver off) when it
+has 00000000. The emulator sets 00002000 (win music) when it
 creates the battery RAM.
 
 The game has 16 sounds (table at A6-31440, filled from the parameter

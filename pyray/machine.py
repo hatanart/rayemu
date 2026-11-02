@@ -38,10 +38,10 @@ VEC_INT5 = 69       # int5
 VEC_PIA1A = 70      # int6: PIA1 CA1
 VEC_ACIA1 = 71      # int7: coin processor ACIA
 VECTORED_LEVEL = 4
-# Effective HD63484 drawing clock: the command times in the user's manual
-# are 2CLK cycles. The screen timing (96 cycles per line, 304 lines, 50 Hz)
-# and the interleaved access mode the game sets (OMR ACM=10, drawing shares
-# memory cycles with the display) give roughly 3 MHz. A guess, adjustable.
+# HD63484 clock (2CLK): 3 MHz, a 12 MHz crystal divided by 2 twice in logic
+# (schematics page 1). The command times in the user's manual are 2CLK
+# cycles. It fits the screen timing the game sets (96 memory cycles per
+# line, 304 lines).
 ACRTC_HZ = 3_000_000
 WD_WARN_CYCLES = CPU_HZ * 4 // 10      # ~0.4 s without a kick -> WCHNMI
 WD_RESET_CYCLES = CPU_HZ // 10         # then ~100 ms later -> reset (boot test wants >25 ms)
@@ -504,8 +504,9 @@ class Machine:
     FEATURES = 202
     WIN_MUSIC, SAVER_OFF = 1 << 13, 1 << 29
 
-    def set_default_features(self, value=WIN_MUSIC | SAVER_OFF):
-        """New books (features 0): turn on win music and saver off."""
+    def set_default_features(self, value=WIN_MUSIC):
+        """New books (features 0): turn on win music. The saver stays on:
+        the yellow tint and dimming of the attract screen are the game's."""
         if self.books_valid() and self.book_read(self.FEATURES) == 0:
             self.book_write(self.FEATURES, value)
 

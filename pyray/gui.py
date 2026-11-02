@@ -9,8 +9,7 @@ import numpy as np
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
 import pygame  # noqa: E402
 
-from .display import HEIGHT, WIDTH, _unpack, palette_for, render_indices  # noqa: E402
-from .hd63484 import VRAM_WORDS  # noqa: E402
+from .display import HEIGHT, WIDTH, _unpack, render_indices  # noqa: E402
 from .machine import Machine  # noqa: E402
 from .fairness import HAND_NAMES  # noqa: E402
 
@@ -20,7 +19,6 @@ BG = (24, 24, 28)
 FG = (220, 220, 220)
 DIM = (110, 110, 120)
 AMBER = (235, 190, 110)
-VRAM_ROWS = VRAM_WORDS // 152   # video memory as 608-pixel rows
 AUDIO_CHUNK = 1024       # samples per chunk handed to the sound card (23 ms)
 
 # Cabinet buttons: (label, key, pia, port, bit). All inputs are active low.
@@ -62,7 +60,7 @@ SEGMENTS = {
 class App:
     def __init__(self, rom, nvram, fullscreen=False, speed=1.0, sound=True,
                  ay_clock=1_000_000, float_coins=1000, acrtc_clock=None, title=None,
-                 audio_latency=40):
+                 audio_latency=40, board=5501):
         try:
             pygame.mixer.pre_init(44100, -16, 1, 1024)
         except Exception:
@@ -70,6 +68,8 @@ class App:
         pygame.init()
         if title is None:
             title = os.path.splitext(os.path.basename(rom))[0] if isinstance(rom, str) else "RAY"
+        if board != 5501:
+            title += " (video board %d)" % board
         pygame.display.set_caption("RAY - " + title)
         self.size = (WIDTH * SCALE, HEIGHT * SCALE + PANEL_H)
         flags = pygame.SCALED | (pygame.FULLSCREEN if fullscreen else 0)
@@ -82,6 +82,7 @@ class App:
                 break
         self.rom, self.nvram, self.ay_clock = rom, nvram, ay_clock
         self.acrtc_clock = acrtc_clock
+        self.board = board
         self.float_coins = float_coins
         self.m = self.new_machine()
         self.audio_ok = False
@@ -151,7 +152,8 @@ class App:
 
     def new_machine(self):
         kw = {} if self.acrtc_clock is None else {"acrtc_clock": self.acrtc_clock}
-        return Machine(self.rom, nvram_path=self.nvram, ay_clock=self.ay_clock, **kw)
+        return Machine(self.rom, nvram_path=self.nvram, ay_clock=self.ay_clock,
+                       board=self.board, **kw)
 
     def pump_audio(self):
         """Feed the sound card in fixed chunks. The emulator makes sound at
@@ -235,7 +237,7 @@ class App:
         if self.vram_view:
             self.screen.blit(self.font.render(
                 "VIDEO MEMORY rows %d-%d of %d  (PgUp/PgDn, wheel, Home/End; F8 back)" % (
-                    self.vram_row, self.vram_row + HEIGHT - 1, VRAM_ROWS), True, (120, 255, 120)),
+                    self.vram_row, self.vram_row + HEIGHT - 1, self.vram_rows()), True, (120, 255, 120)),
                 (60, y0 + 56))
         if time.time() < self.status_until:
             self.screen.blit(self.font.render(self.status, True, (120, 255, 120)), (720, y0 + 36))
@@ -253,30 +255,35 @@ class App:
         for i, t in enumerate(HELP):
             self.screen.blit(self.small.render(t, True, DIM), (8, y0 + PANEL_H - 6 - lh * (len(HELP) - i)))
 
+    def vram_rows(self):
+        """The video memory as 608-pixel rows."""
+        return len(self.m.acrtc.vram) // 152
+
     def vram_indices(self):
         """A screen-sized window into the whole video memory (F8)."""
         vram = np.frombuffer(self.m.acrtc.vram, dtype=np.uint16)
-        rows = (self.vram_row + np.arange(HEIGHT)) % VRAM_ROWS
+        rows = (self.vram_row + np.arange(HEIGHT)) % self.vram_rows()
         words = vram[(rows[:, None] * 152 + np.arange(152)[None, :]) % len(vram)]
         return _unpack(words)
 
     def scroll_vram(self, rows):
-        self.vram_row = max(0, min(VRAM_ROWS - HEIGHT, self.vram_row + rows))
+        self.vram_row = max(0, min(self.vram_rows() - HEIGHT, self.vram_row + rows))
 
     def draw(self):
         if self.vram_view:
             idx = self.vram_indices()
-            dcr = 0x3F                     # show the memory undimmed
+            key = ("undimmed", self.m.palette_key())     # show the memory undimmed
         else:
             idx = render_indices(self.m.acrtc)
-            dcr = self.m.acrtc.reg(0x06) & 0x3F
+            key = self.m.palette_key()
         if self.surf8 is None:
             self.surf8 = pygame.Surface((WIDTH, HEIGHT), depth=8)
-        if dcr != self.pal_dcr:
-            pal = [tuple(int(v) for v in c) for c in palette_for(dcr)] + [(0, 0, 0)] * 240
+        if key != self.pal_dcr:
+            colours = self.m.palette(undimmed=self.vram_view)
+            pal = [tuple(int(v) for v in c) for c in colours] + [(0, 0, 0)] * 240
             self.surf8.set_palette(pal)
             self.scaled.set_palette(pal)
-            self.pal_dcr = dcr
+            self.pal_dcr = key
         pygame.surfarray.blit_array(self.surf8, idx.T)
         pygame.transform.scale(self.surf8, (WIDTH * SCALE, HEIGHT * SCALE), self.scaled)
         self.screen.blit(self.scaled, (0, 0))
@@ -332,7 +339,7 @@ class App:
                     elif down and self.vram_view and ev.key == pygame.K_HOME:
                         self.vram_row = 0
                     elif down and self.vram_view and ev.key == pygame.K_END:
-                        self.scroll_vram(VRAM_ROWS)
+                        self.scroll_vram(self.vram_rows())
                     elif down and ev.key == pygame.K_F11:
                         pygame.display.toggle_fullscreen()
             # keep emulated time in step with wall time (100 machine frames/s)

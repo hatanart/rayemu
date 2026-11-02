@@ -12,6 +12,7 @@ Main board
   Video      Hitachi HD63484 ACRTC graphics processor, 3 MHz clock (2CLK:
              a 12 MHz crystal divided by 2 twice in logic, schematics
              page 1), 4 bits per pixel, 608 x 292 visible, 16 fixed colours
+             (video board 5501; the 5502 has a palette chip, see below)
   I/O        3 x MC6821 PIA, MC6850 ACIAs (serial), MC68681 DUART (optional)
   Sound      AY-3-8910 on the light/sound board, 1 MHz clock, driven
              through PIA1
@@ -43,6 +44,43 @@ byte: an even register address is the high byte, an odd one the low byte.
 With bit 7 of the address set, the address steps by one byte per access.
 The command FIFO (address 0) pairs two bytes into a word.
 
+
+Video boards 5501 and 5502
+--------------------------
+The cabling diagram of the Norwegian POKER/RKA (POKER_RKA.pdf page 1)
+shows the game board "Spelprocessor 5003-2" with "Monitorns styrenhet
+PCB 5501-0", the video board the emulator has by default: 512K words of
+video memory and 16 fixed colours, dimmed by the ACRTC's DCR outputs.
+
+Page 2 of the same file is its successor, "Videomonitorin ohjain II"
+(PIK-5502-0, 1990-91). The same ACRTC (IC44), clocked through RAY's own
+logic chip RAY7115 (IC46, 44 pins, a 24 MHz crystal; it also makes the
+dot clock, the DRAM timing and the sync), plus:
+  - 1M words of video memory (four RAS banks)
+  - IMS G176 palette DAC (IC45) at 0E0000: 256 colours of 6 bits per
+    gun; registers at +0 (write address), +2 (red, green, blue in turn),
+    +4 (pixel mask), +6 (read address). Its P0-P3 are the pixel
+    (LEV, RED, GRE, BLU), P4/P5 pulled high, P6/P7 latch MAD16/MAD17.
+  - MC68681 DUART (IC17) at 0C0000, register n at 0C0000 + n: port A
+    with RTS/CTS and +12 V to J4, port B and the spare inputs and
+    outputs to J5. For the central computer link (GAME.txt section 10).
+  - 32 KB static RAM (IC28) at 0D0000
+
+The program supports both. At start (ROM 0x5B9C) it writes 3456 to video
+memory word 30000 and BCDE to B0000: on a 5501 they are the same word.
+On a 5502 it then
+  - loads the G176 with its own palette (ROM 0x5D76, 64 colours = four
+    sets of 16, written four times to fill 256) and sets up the DUART
+  - tests both at start-up (ROM 0x16E1C): the DUART's interrupt vector
+    must read 0F (fault 17 = IC17 otherwise), the RAM must keep a long
+    word (fault 28 = IC28)
+  - does the screen saver with the G176 pixel mask instead of the DCR
+    (ROM 0x5B3A): brightness 63 -> mask CF (set 0, the normal colours),
+    59 -> DF (set 1, a little dimmer), 35 -> EF (set 2: blue turns gold,
+    red magenta), 29 -> FF (set 3)
+
+--board 5502 emulates it: the RAM, the G176 and the DUART as far as the
+start-up test needs (always ready to send, never receives anything).
 
 Program ROM
 -----------
@@ -81,6 +119,18 @@ it in C on an OS-9 development system and packed it into OS-9 modules:
   - Microware C keeps the global variables relative to register A6,
     which is why the code is full of -30991(a6) and jsr -27758(a6), and
     why these notes name RAM as A6-nnnnn
+
+The program can also run from RAM, which must be how it was developed
+(loaded into a development board, probably from the OS-9 system). The
+reset code (ROM 0x217E) writes 0 over a long word of its own program
+(0x24EA) and reads it back. In ROM the write does nothing. In RAM it
+sticks, and then everything moves up by 0x70000: the supervisor stack
+0x40B00 -> 0xB0B00, the user stack 0x40700 -> 0xB0700 and A6 (all the
+global variables) 0x48B00 -> 0xB8B00, so the working RAM is at 0xB0000-
+0xBFFFF instead of 0x40000-0x4FFFF. The same test again (0x25A4) puts
+the parameter module at 0xBC000 instead of 0x30000 (pointer at
+A6-29530) and patches handler addresses into its own image (0x28FA).
+The emulator ignores writes to ROM, like the real board.
 
 
 Interrupts

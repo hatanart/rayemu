@@ -98,6 +98,10 @@ Options
                     if the sound crackles on a slow computer
   --acrtc-clock HZ  graphics chip clock (default 3000000, the board's 3 MHz;
                     higher = faster animations, 0 = draw instantly)
+  --board 5502      run on the later video board 5502 (more video memory, a
+                    palette chip, a DUART): the same ROMs then use RAY's own
+                    colours, also for the attract screen's colour effects
+                    (default 5501; HARDWARE.txt, "Video boards")
   --rom SET|FILE    ROM set to run (default pokeri-8460-1.1, from its .ray
                     file in roms/), or one joined
                     256 KB ROM file

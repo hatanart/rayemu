@@ -26,6 +26,8 @@ from .lightsound import LightSound
 from .coinproc import CoinUnit
 from .ay8910 import AY8910
 from .fairness import Fairness
+from .board5502 import Board5502, VRAM_WORDS as VRAM_WORDS_5502
+from .display import palette_for
 
 CPU_HZ = 8_000_000
 ROM_SIZE = 0x40000
@@ -56,8 +58,14 @@ def _load_lib():
 
 class Machine:
     def __init__(self, rom_path, nvram_path=None, verbose=False, ay_clock=1_000_000,
-                 acrtc_clock=ACRTC_HZ):
+                 acrtc_clock=ACRTC_HZ, board=5501):
         self.verbose = verbose
+        # video board: 5501, or 5502 with more video memory, a DUART, extra
+        # RAM and a colour palette chip (board5502.py)
+        if board not in (5501, 5502):
+            raise ValueError("board must be 5501 or 5502")
+        self.board = board
+        self.board2 = Board5502() if board == 5502 else None
         self.m = machine68k.Machine(machine68k.CPUType.M68000, 0x50000 // 1024)
         self.cpu = self.m.cpu
         self.mem = self.m.mem
@@ -84,7 +92,7 @@ class Machine:
                 pass
 
         # devices
-        self.acrtc = HD63484()
+        self.acrtc = HD63484(VRAM_WORDS_5502) if self.board2 else HD63484()
         self.in_slice = False
         self.acrtc.clock = self.now
         self.acrtc.cpu_per_cycle = CPU_HZ / acrtc_clock if acrtc_clock else 0.0
@@ -127,6 +135,8 @@ class Machine:
         # (the coin unit is a separate board and keeps running)
         for d in (self.acrtc, self.pia1, self.pia2, self.pia3, self.ls):
             d.reset()
+        if self.board2:
+            self.board2.reset()
         for a in self.acias:
             a.reset()
         self.cpu.pulse_reset()
@@ -147,6 +157,8 @@ class Machine:
         self.reset_instr_count += 1
         for d in (self.acrtc, self.pia1, self.pia2, self.pia3, self.ls):
             d.reset()
+        if self.board2:
+            self.board2.reset()
         for a in self.acias:
             a.reset()
         self.kick_watchdog()
@@ -270,6 +282,10 @@ class Machine:
         self._io_w16(addr + 2, val & 0xFFFF)
 
     def io_read8(self, addr):
+        if self.board2 and 0xC0000 <= addr < 0xE0008:
+            v = self.board2.read8(addr)
+            if v is not None:
+                return v
         if 0xF6000 <= addr < 0xF8000:
             return self.acrtc.read8(addr & 3)
         if 0xFB000 <= addr < 0xFB020:
@@ -283,6 +299,8 @@ class Machine:
         return 0xFF
 
     def io_write8(self, addr, val):
+        if self.board2 and 0xC0000 <= addr < 0xE0008 and self.board2.write8(addr, val):
+            return
         if 0xF6000 <= addr < 0xF8000:
             self.acrtc.write8(addr & 3, val)
             return
@@ -566,6 +584,20 @@ class Machine:
         game then saves its state and halts. Run a few frames afterwards."""
         self.pia2.set_input("b", 7, 1)
         self.pia3.b.pulse_c1()
+
+    def palette(self, undimmed=False):
+        """The 16 colours (RGB, 8 bits) the screen shows now: on the 5501
+        the fixed colours dimmed by the DCR outputs, on the 5502 what the
+        game loaded into the G176. undimmed: the colours as in play."""
+        if self.board2:
+            return self.board2.g176.palette16(0xCF if undimmed else None)
+        return palette_for(0x3F if undimmed else self.acrtc.reg(0x06))
+
+    def palette_key(self):
+        """Changes whenever palette() would."""
+        if self.board2:
+            return ("g176", self.board2.g176.version)
+        return self.acrtc.reg(0x06) & 0x3F
 
     def save_nvram(self):
         if self.nvram_path:

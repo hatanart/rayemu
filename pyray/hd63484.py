@@ -49,8 +49,10 @@ def s16(v):
 
 
 class HD63484:
-    def __init__(self):
-        self.vram = array('H', bytes(2 * VRAM_WORDS))
+    def __init__(self, vram_words=VRAM_WORDS):
+        # 512K words on the 5501 video board, 1M words on the 5502
+        self.addr_mask = vram_words - 1
+        self.vram = array('H', bytes(2 * vram_words))
         self.regs = [0] * 128
         self.unsupported = {}
         self.cmd_log = None       # set to a list to record commands
@@ -341,7 +343,7 @@ class HD63484:
     def execute(self, f):
         op = f[0]
         if op == 0x0400:                         # ORG
-            self.org = (((f[1] & 0xFF) << 12) | ((f[2] & 0xFFF0) >> 4)) & ADDR_MASK
+            self.org = (((f[1] & 0xFF) << 12) | ((f[2] & 0xFFF0) >> 4)) & self.addr_mask
             self.org_dpd = f[2] & 0xF
         elif (op & 0xFFE0) == 0x0800:            # WPR
             self._wpr(op & 0x1F, f[1])
@@ -352,10 +354,10 @@ class HD63484:
                 self.pattern[(start + i) & 15] = f[2 + i]
         elif op == 0x4400:                       # RD
             self.readfifo.append(self.vram[self.rwp])
-            self.rwp = (self.rwp + 1) & ADDR_MASK
+            self.rwp = (self.rwp + 1) & self.addr_mask
         elif op == 0x4800:                       # WT
             self.vram[self.rwp] = f[1]
-            self.rwp = (self.rwp + 1) & ADDR_MASK
+            self.rwp = (self.rwp + 1) & self.addr_mask
         elif op == 0x5800 or (op & 0xFFFC) == 0x5C00:   # CLR / SCLR
             self.doclr16(op, f[1], s16(f[2]), s16(f[3]))
         elif (op & 0xF0FF) == 0x6000 or (op & 0xF0FC) == 0x7000:  # CPY / SCPY
@@ -453,10 +455,10 @@ class HD63484:
         elif r == 10: self.xmax = v
         elif r == 11: self.ymax = v
         elif r == 12:
-            self.rwp = ((self.rwp & 0xFFF) | ((v & 0xFF) << 12)) & ADDR_MASK
+            self.rwp = ((self.rwp & 0xFFF) | ((v & 0xFF) << 12)) & self.addr_mask
             self.rwp_dn = (v & 0xC000) >> 14
         elif r == 13:
-            self.rwp = ((self.rwp & 0xFF000) | ((v & 0xFFF0) >> 4)) & ADDR_MASK
+            self.rwp = ((self.rwp & 0xFF000) | ((v & 0xFFF0) >> 4)) & self.addr_mask
 
     def _gcpy_move(self, op, ax, ay):
         d = op & 0x700
@@ -473,6 +475,7 @@ class HD63484:
     # word-level operations
     def doclr16(self, op, fill, ax0, ay0):
         vram = self.vram
+        amask = self.addr_mask
         mw = self.mwr1
         dst = self.rwp
         mode = op & 3
@@ -480,7 +483,7 @@ class HD63484:
         while True:
             ax = ax0
             while True:
-                a = dst & ADDR_MASK
+                a = dst & amask
                 if mode == 0: vram[a] = fill
                 elif mode == 1: vram[a] |= fill
                 elif mode == 2: vram[a] &= fill
@@ -499,10 +502,11 @@ class HD63484:
                 dst = dst - mw - ax0
                 if ay == 0: break
                 ay -= 1
-        self.rwp = dst & ADDR_MASK
+        self.rwp = dst & amask
 
     def docpy16(self, op, src, ax0, ay0):
         vram = self.vram
+        amask = self.addr_mask
         mw = self.mwr1
         dst = self.rwp
         d = op & 0x700
@@ -520,8 +524,8 @@ class HD63484:
         vert = op & 0x800
         while True:
             while True:
-                a = dst & ADDR_MASK
-                sv = vram[src & ADDR_MASK]
+                a = dst & amask
+                sv = vram[src & amask]
                 if mode == 0: vram[a] = sv
                 elif mode == 1: vram[a] |= sv
                 elif mode == 2: vram[a] &= sv
@@ -568,7 +572,7 @@ class HD63484:
                     dst += s2
                     if ay == 0: break
                     ay -= 1
-        self.rwp = dst & ADDR_MASK
+        self.rwp = dst & amask
 
     # ------------------------------------------------------------------
     # pixel operations (4 bits per pixel is what this board uses, but
@@ -594,7 +598,7 @@ class HD63484:
         color &= bitmask
         bm = bitmask << sh
         cs = color << sh
-        dst = (self.org + x_int - y * self.mwr1) & ADDR_MASK
+        dst = (self.org + x_int - y * self.mwr1) & self.addr_mask
         vram = self.vram
         v = vram[dst]
         nbm = ~bm & 0xFFFF
@@ -619,7 +623,7 @@ class HD63484:
         bpp = self._bpp()
         ppw = 16 // bpp
         x_int, x_mod = divmod(x, ppw)
-        dst = (self.org + x_int - y * self.mwr1) & ADDR_MASK
+        dst = (self.org + x_int - y * self.mwr1) & self.addr_mask
         return (self.vram[dst] >> (x_mod * bpp)) & ((1 << bpp) - 1)
 
     def agcpy(self, op, sx, sy, dx, dy, ax0, ay0):
@@ -696,15 +700,15 @@ class HD63484:
                 if w is not None and w < k:
                     return False
         V = np.frombuffer(self.vram, dtype=np.uint16)
-        org, mw = self.org, self.mwr1
+        org, mw, amask = self.org, self.mwr1, self.addr_mask
         srow = org - ys * mw
         drow = org - yd * mw
         for i in range(ncol):
             xs = sx + i * axn
             xd = dx + i * d2x
-            sa = (srow + (xs >> 2)) & ADDR_MASK
+            sa = (srow + (xs >> 2)) & amask
             pix = (V[sa] >> ((xs & 3) << 2)) & 15
-            da = (drow + (xd >> 2)) & ADDR_MASK
+            da = (drow + (xd >> 2)) & amask
             sh = (xd & 3) << 2
             V[da] = (V[da] & (~(15 << sh) & 0xFFFF)) | (pix << sh)
         return True
@@ -720,6 +724,7 @@ class HD63484:
             0x600: (0, 1, -1, 0), 0x700: (0, -1, -1, 0)}
         d1x, d1y, d2x, d2y = table[d]
         vram = self.vram
+        amask = self.addr_mask
         org = self.org
         mw = self.mwr1
         nx = abs(ax0) + 1
@@ -733,9 +738,9 @@ class HD63484:
             xs = sx
             xd, yd = xd0, yd0
             for i in range(nx):
-                w = vram[(srow + (xs >> 2)) & ADDR_MASK]
+                w = vram[(srow + (xs >> 2)) & amask]
                 c = (w >> ((xs & 3) << 2)) & 15
-                a = (org + (xd >> 2) - yd * mw) & ADDR_MASK
+                a = (org + (xd >> 2) - yd * mw) & amask
                 sh = (xd & 3) << 2
                 vram[a] = (vram[a] & ~(15 << sh) & 0xFFFF) | (c << sh)
                 xs += axn
@@ -825,12 +830,12 @@ class HD63484:
         sty = 1 if y1 >= y0 else -1
         c = self.cl0
         if opm == 0 and self._bpp() == 4 and self._first_pixel() == 0:
-            vram, org, mw = self.vram, self.org, self.mwr1
+            vram, org, mw, amask = self.vram, self.org, self.mwr1, self.addr_mask
             c &= 15
             for y in range(y0, y1 + sty, sty):
                 row = org - y * mw
                 for x in range(x0, x1 + stx, stx):
-                    a = (row + (x >> 2)) & ADDR_MASK
+                    a = (row + (x >> 2)) & amask
                     sh = (x & 3) << 2
                     vram[a] = (vram[a] & ~(15 << sh) & 0xFFFF) | (c << sh)
             return

@@ -25,6 +25,9 @@ def main():
                     help="sound buffering in ms (default 40; raise it if the sound crackles)")
     ap.add_argument("--acrtc-clock", type=int, default=None,
                     help="graphics chip drawing clock in Hz (default 3000000, 0 = draw instantly)")
+    ap.add_argument("--board", type=int, choices=(5501, 5502), default=5501,
+                    help="video board: 5501 (default) or 5502, the later board with "
+                         "a colour palette chip, a DUART and more video memory")
     args = ap.parse_args()
 
     if args.list_roms:
@@ -39,7 +42,8 @@ def main():
     from .gui import App
     App(data, nvram, args.fullscreen, args.speed, sound=not args.no_sound,
         ay_clock=args.ay_clock, float_coins=args.float_coins,
-        acrtc_clock=args.acrtc_clock, title=title, audio_latency=args.audio_latency).run()
+        acrtc_clock=args.acrtc_clock, title=title, audio_latency=args.audio_latency,
+        board=args.board).run()
 
 
 if __name__ == "__main__":

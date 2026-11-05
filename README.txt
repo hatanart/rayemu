@@ -164,3 +164,9 @@ set all takeback.bet lines and correction_high to 0.
 
 HARDWARE.txt describes the board as far as it is known, and GAME.txt
 the game: rules, dealing, the payout controller, settings and bookkeeping.
+
+License
+-------
+The emulator's own files are released under CC0 1.0 (public domain;
+see LICENSE). This doesn't cover the game: the ROMs, and the game's
+pictures, texts and sounds, belong to RAY (now Veikkaus).
